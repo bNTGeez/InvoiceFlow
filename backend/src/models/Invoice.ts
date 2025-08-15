@@ -59,9 +59,9 @@ const invoiceSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Stripe payment intent ID is used to retrieve the payment status and details from Stripe API
     stripePaymentIntentId: {
       type: String,
-      // Stripe payment intent ID is used to retrieve the payment status and details from Stripe API
       default: null,
     },
   },

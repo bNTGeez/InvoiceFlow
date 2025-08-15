@@ -7,6 +7,7 @@ import {
   CreateInvoiceSchema,
   UpdateInvoiceSchema,
 } from "../validation/invoiceValidation.ts";
+import { stripe } from "../config/stripe.ts";
 
 const router = express.Router();
 
@@ -140,5 +141,67 @@ router.delete("/:id", verifyToken, async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Error deleting invoice", error });
   }
 });
+
+// stripe
+
+// returns stripe payment page url
+router.post(
+  "/:id/payment-link",
+  verifyToken,
+  async (req: Request, res: Response) => {
+    try {
+      const ownerId = req.user?.id;
+      const { id } = req.params;
+
+      if (!ownerId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const invoice = await Invoice.findOne({ _id: id, ownerId });
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+      if (invoice.status === "paid") {
+        return res.status(400).json({ message: "Invoice already paid" });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        success_url: `http://localhost:8001/api/payments/success?invoiceId=${invoice.id}&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url:
+          "http://localhost:8001/api/payments/cancel?invoiceId=" + invoice.id,
+        customer_email: invoice.clientEmail,
+        line_items: invoice.items.map((item) => ({
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: item.description,
+            },
+            unit_amount: Math.round(item.price * 100),
+          },
+          quantity: item.quantity,
+        })),
+        metadata: { invoiceId: invoice.id },
+        payment_intent_data: {
+          metadata: {
+            invoiceId: invoice.id,
+          },
+        },
+      });
+
+      return res.json({ url: session.url, sessionId: session.id });
+    } catch (error) {
+      console.error("Error creating payment link:", error);
+      return res
+        .status(500)
+        .json({ message: "Error creating payment link", error });
+    }
+  }
+);
+
+// TODO: Email invoices to client w/ payment link (feature for later)
+// router.get("/:id/send", (req: Request, res: Response) => {
+//   // Email functionality to be implemented later
+// });
 
 export default router;
